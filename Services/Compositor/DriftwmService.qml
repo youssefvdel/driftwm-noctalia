@@ -39,6 +39,12 @@ Item {
     const runtimeDir = Quickshell.env("XDG_RUNTIME_DIR") || "/run/user/1000";
     stateFilePath = runtimeDir + "/driftwm/state";
 
+    // driftwm doesn't support ext-background-effect-v1 — disable blur
+    if (typeof Settings !== 'undefined' && Settings.data?.general?.enableBlurBehind) {
+      Settings.data.general.enableBlurBehind = false;
+      Logger.i("DriftwmService", "Disabled blur (driftwm lacks ext-background-effect-v1)");
+    }
+
     // Create single synthetic workspace
     workspaces.clear();
     workspaces.append({
