@@ -18,6 +18,7 @@ Singleton {
   property bool isLabwc: false
   property bool isExtWorkspace: false
   property bool isScroll: false
+  property bool isDriftwm: false
 
   // Generic workspace and window data
   property ListModel workspaces: ListModel {}
@@ -34,6 +35,12 @@ Singleton {
   // Global workspaces flag (workspaces shared across all outputs)
   // True for LabWC (stacking compositor), false for tiling WMs with per-output workspaces
   property bool globalWorkspaces: false
+
+  // Canvas state (driftwm infinite canvas)
+  signal canvasStateChanged
+  property real canvasViewportX: 0
+  property real canvasViewportY: 0
+  property real canvasZoom: 1.0
 
   // Generic events
   signal workspaceChanged
@@ -70,9 +77,19 @@ Singleton {
     const currentDesktop = Quickshell.env("XDG_CURRENT_DESKTOP");
     const labwcPid = Quickshell.env("LABWC_PID");
 
-    // Check for MangoWC using XDG_CURRENT_DESKTOP environment variable
-    // MangoWC sets XDG_CURRENT_DESKTOP=mango
-    if (currentDesktop && currentDesktop.toLowerCase().includes("mango")) {
+    // Check for driftwm using XDG_CURRENT_DESKTOP environment variable
+    // driftwm sets XDG_CURRENT_DESKTOP=driftwm
+    if (currentDesktop && currentDesktop.toLowerCase().includes("driftwm")) {
+      isHyprland = false;
+      isNiri = false;
+      isSway = false;
+      isMango = false;
+      isLabwc = false;
+      isExtWorkspace = false;
+      isDriftwm = true;
+      backendLoader.sourceComponent = driftwmComponent;
+      Logger.i("CompositorService", "Detected driftwm (infinite canvas compositor)");
+    } else if (currentDesktop && currentDesktop.toLowerCase().includes("mango")) {
       isHyprland = false;
       isNiri = false;
       isSway = false;
@@ -207,6 +224,14 @@ Singleton {
     }
   }
 
+  // driftwm backend component
+  Component {
+    id: driftwmComponent
+    DriftwmService {
+      id: driftwmBackend
+    }
+  }
+
   function setupBackendConnections() {
     if (!backend)
       return;
@@ -242,6 +267,16 @@ Singleton {
                                             });
     }
 
+    // Canvas state (driftwm-specific)
+    if (backend.canvasStateChanged) {
+      backend.canvasStateChanged.connect(() => {
+                                          canvasViewportX = backend.viewportX;
+                                          canvasViewportY = backend.viewportY;
+                                          canvasZoom = backend.viewportZoom;
+                                          canvasStateChanged();
+                                        });
+    }
+
     // Initial sync
     syncWorkspaces();
     syncWindows();
@@ -251,6 +286,11 @@ Singleton {
     }
     if (backend.globalWorkspaces !== undefined) {
       globalWorkspaces = backend.globalWorkspaces;
+    }
+    if (backend.viewportX !== undefined) {
+      canvasViewportX = backend.viewportX;
+      canvasViewportY = backend.viewportY;
+      canvasZoom = backend.viewportZoom;
     }
   }
 
