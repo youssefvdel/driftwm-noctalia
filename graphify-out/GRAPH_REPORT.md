@@ -1,7 +1,7 @@
 # Graph Report - .  (2026-05-06)
 
 ## Corpus Check
-- 31 files · ~796,152 words
+- 31 files · ~799,177 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -83,16 +83,16 @@
 10. `Cam16` - 47 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Contrast calculation utilities (WCAG luminance and contrast).  This module provi` --uses--> `Color`  [INFERRED]
-  Scripts/python/src/theming/lib/contrast.py → Scripts/python/src/theming/lib/color.py
-- `Calculate relative luminance per WCAG 2.1.      The formula converts sRGB to lin` --uses--> `Color`  [INFERRED]
-  Scripts/python/src/theming/lib/contrast.py → Scripts/python/src/theming/lib/color.py
-- `Calculate WCAG contrast ratio between two colors.      Returns a value between 1` --uses--> `Color`  [INFERRED]
-  Scripts/python/src/theming/lib/contrast.py → Scripts/python/src/theming/lib/color.py
-- `Determine if a color is perceptually dark.` --uses--> `Color`  [INFERRED]
-  Scripts/python/src/theming/lib/contrast.py → Scripts/python/src/theming/lib/color.py
-- `Adjust foreground color to meet minimum contrast ratio against background.` --uses--> `Color`  [INFERRED]
-  Scripts/python/src/theming/lib/contrast.py → Scripts/python/src/theming/lib/color.py
+- `Color` --uses--> `Contrast calculation utilities (WCAG luminance and contrast).  This module provi`  [INFERRED]
+  Scripts/python/src/theming/lib/color.py → Scripts/python/src/theming/lib/contrast.py
+- `Color` --uses--> `Calculate relative luminance per WCAG 2.1.      The formula converts sRGB to lin`  [INFERRED]
+  Scripts/python/src/theming/lib/color.py → Scripts/python/src/theming/lib/contrast.py
+- `Color` --uses--> `Calculate WCAG contrast ratio between two colors.      Returns a value between 1`  [INFERRED]
+  Scripts/python/src/theming/lib/color.py → Scripts/python/src/theming/lib/contrast.py
+- `Color` --uses--> `Determine if a color is perceptually dark.`  [INFERRED]
+  Scripts/python/src/theming/lib/color.py → Scripts/python/src/theming/lib/contrast.py
+- `Color` --uses--> `Adjust foreground color to meet minimum contrast ratio against background.`  [INFERRED]
+  Scripts/python/src/theming/lib/color.py → Scripts/python/src/theming/lib/contrast.py
 
 ## Communities
 
