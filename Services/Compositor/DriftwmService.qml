@@ -21,7 +21,7 @@ Item {
   property real viewportY: 0
   property real viewportZoom: 1.0
   property string activeLayout: ""
-  property var windowList: []
+  property var _stateWindowList: []
   property var layerList: []
   property var outputStates: ({})
 
@@ -33,16 +33,26 @@ Item {
 
   // ── State file path ──
   property string stateFilePath: ""
-  property var lastStateMtime: 0
 
   function initialize() {
     const runtimeDir = Quickshell.env("XDG_RUNTIME_DIR") || "/run/user/1000";
     stateFilePath = runtimeDir + "/driftwm/state";
 
     // driftwm doesn't support ext-background-effect-v1 — disable blur
-    if (typeof Settings !== 'undefined' && Settings.data?.general?.enableBlurBehind) {
-      Settings.data.general.enableBlurBehind = false;
-      Logger.i("DriftwmService", "Disabled blur (driftwm lacks ext-background-effect-v1)");
+    if (typeof Settings !== 'undefined') {
+      if (Settings.data?.general?.enableBlurBehind) {
+        Settings.data.general.enableBlurBehind = false;
+        Logger.i("DriftwmService", "Disabled blur (driftwm lacks ext-background-effect-v1)");
+      }
+      // driftwm renders its own background via shaders
+      if (Settings.data?.wallpaper) {
+        Settings.data.wallpaper.enabled = false;
+        Logger.i("DriftwmService", "Disabled wallpaper (driftwm handles background via shaders)");
+      }
+      // No workspaces = no overview mode
+      if (Settings.data?.desktopWidgets) {
+        Settings.data.desktopWidgets.overviewEnabled = false;
+      }
     }
 
     // Create single synthetic workspace
@@ -61,7 +71,7 @@ Item {
 
     updateWindows();
     statePollTimer.start();
-    pollStateFile();
+    readStateFile();
     Logger.i("DriftwmService", "Service started (driftwm infinite canvas)");
   }
 
@@ -72,41 +82,39 @@ Item {
     interval: 250
     running: false
     repeat: true
-    onTriggered: root.pollStateFile()
+    onTriggered: root.readStateFile()
   }
 
-  property var statProcess: null
-  property var readProcess: null
-
-  function pollStateFile() {
-    if (!stateFilePath) return;
-
-    // Use Process to stat then read the state file
-    if (!statProcess) {
-      statProcess = new Process();
-      statProcess.onFinished = function (exitCode, exitStatus) {
-        if (exitCode !== 0) return;
-        const mtime = parseInt(statProcess.stdout.trim()) || 0;
-        if (mtime !== lastStateMtime) {
-          lastStateMtime = mtime;
-          readStateFile();
-        }
-      };
-    }
-    statProcess.command = ["stat", "-c", "%Y", stateFilePath];
-    statProcess.running = true;
-  }
+  property string lastStateContent: ""
+  property bool stateReadInProgress: false
 
   function readStateFile() {
-    if (!readProcess) {
-      readProcess = new Process();
-      readProcess.onFinished = function (exitCode, exitStatus) {
-        if (exitCode !== 0) return;
-        parseStateFile(readProcess.stdout);
-      };
-    }
-    readProcess.command = ["cat", stateFilePath];
-    readProcess.running = true;
+    if (!stateFilePath || stateReadInProgress) return;
+
+    stateReadInProgress = true;
+    const safePath = stateFilePath.replace(/"/g, '\\"');
+    const processObj = Qt.createQmlObject(
+      'import QtQuick; import Quickshell.Io; Process {\n' +
+      '  command: ["cat", "' + safePath + '"]\n' +
+      '  stdout: StdioCollector {}\n' +
+      '}',
+      root,
+      "DriftwmStateReader"
+    );
+
+    processObj.exited.connect(function (exitCode) {
+      if (exitCode === 0) {
+        const content = processObj.stdout.text;
+        if (content !== lastStateContent) {
+          lastStateContent = content;
+          parseStateFile(content);
+        }
+      }
+      stateReadInProgress = false;
+      processObj.destroy();
+    });
+
+    processObj.running = true;
   }
 
   function parseStateFile(content) {
@@ -126,22 +134,38 @@ Item {
 
       switch (key) {
         case "x":
-          const newX = parseFloat(value) || 0;
-          if (Math.abs(viewportX - newX) > 0.5) { viewportX = newX; changed = true; }
+          {
+            const newX = parseFloat(value) || 0;
+            if (Math.abs(viewportX - newX) > 0.5) { viewportX = newX; changed = true; }
+          }
           break;
         case "y":
-          const newY = parseFloat(value) || 0;
-          if (Math.abs(viewportY - newY) > 0.5) { viewportY = newY; changed = true; }
+          {
+            const newY = parseFloat(value) || 0;
+            if (Math.abs(viewportY - newY) > 0.5) { viewportY = newY; changed = true; }
+          }
           break;
         case "zoom":
-          const newZoom = parseFloat(value) || 1.0;
-          if (Math.abs(viewportZoom - newZoom) > 0.001) { viewportZoom = newZoom; changed = true; }
+          {
+            const newZoom = parseFloat(value) || 1.0;
+            if (Math.abs(viewportZoom - newZoom) > 0.001) { viewportZoom = newZoom; changed = true; }
+          }
           break;
         case "layout":
           if (activeLayout !== value) { activeLayout = value; changed = true; }
           break;
         case "windows":
-          if (value) newWindowList.push(...value.split(",").map(s => s.trim()).filter(Boolean));
+          if (value) {
+            try {
+              const parsed = JSON.parse(value);
+              for (const w of parsed) {
+                newWindowList.push(w);
+              }
+            } catch (e) {
+              // fallback: comma-separated format
+              newWindowList.push(...value.split(",").map(s => s.trim()).filter(Boolean));
+            }
+          }
           break;
         case "layers":
           if (value) newLayerList.push(...value.split(",").map(s => s.trim()).filter(Boolean));
@@ -162,8 +186,8 @@ Item {
     }
 
     // Update window/layer lists
-    if (JSON.stringify(windowList) !== JSON.stringify(newWindowList)) {
-      windowList = newWindowList;
+    if (JSON.stringify(_stateWindowList) !== JSON.stringify(newWindowList)) {
+      _stateWindowList = newWindowList;
       changed = true;
     }
     if (JSON.stringify(layerList) !== JSON.stringify(newLayerList)) {

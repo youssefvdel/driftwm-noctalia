@@ -132,15 +132,40 @@ Singleton {
       isScroll = currentDesktop && currentDesktop.toLowerCase().includes("scroll");
       backendLoader.sourceComponent = swayComponent;
     } else {
-      // Always fallback to ext-workspace-v1
-      isHyprland = false;
-      isNiri = false;
-      isSway = false;
-      isMango = false;
-      isLabwc = false;
-      isExtWorkspace = true;
-      backendLoader.sourceComponent = extWorkspaceComponent;
-      Logger.i("CompositorService", "Using generic ext-workspace backend (no recognized compositor env)");
+      // Check for driftwm state file as fallback when XDG_CURRENT_DESKTOP is not set
+      // (e.g. when running driftwm from TTY instead of a display manager)
+      const runtimeDir = Quickshell.env("XDG_RUNTIME_DIR") || "/run/user/1000";
+      const driftwmStateFile = runtimeDir + "/driftwm/state";
+      const safeFile = driftwmStateFile.replace(/"/g, '\\"');
+
+      const statCheckObj = Qt.createQmlObject(
+        'import QtQuick; import Quickshell.Io; Process {\n' +
+        '  command: ["sh", "-c", "test -f \\"' + safeFile + '\\""]\n' +
+        '}',
+        root,
+        "DriftwmFallbackCheck"
+      );
+
+      statCheckObj.exited.connect(function (exitCode) {
+        if (exitCode === 0) {
+          isDriftwm = true;
+          isHyprland = false;
+          isNiri = false;
+          isSway = false;
+          isMango = false;
+          isLabwc = false;
+          isExtWorkspace = false;
+          backendLoader.sourceComponent = driftwmComponent;
+          Logger.i("CompositorService", "Detected driftwm via state file (no XDG_CURRENT_DESKTOP)");
+        } else {
+          isExtWorkspace = true;
+          backendLoader.sourceComponent = extWorkspaceComponent;
+          Logger.i("CompositorService", "Using generic ext-workspace backend (no recognized compositor env)");
+        }
+        statCheckObj.destroy();
+      });
+
+      statCheckObj.running = true;
     }
   }
 
