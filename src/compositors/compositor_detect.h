@@ -16,6 +16,7 @@ namespace compositors {
     Dwl = 7,
     Kde = 8,
     Umbriel = 9,
+    Driftwm = 10,
   };
 
   // Detected once per process from env vars. Cached after the first call.
@@ -36,5 +37,6 @@ namespace compositors {
   [[nodiscard]] inline bool isDwl() { return detect() == CompositorKind::Dwl; }
   [[nodiscard]] inline bool isKde() { return detect() == CompositorKind::Kde; }
   [[nodiscard]] inline bool isUmbriel() { return detect() == CompositorKind::Umbriel; }
+  [[nodiscard]] inline bool isDriftwm() { return detect() == CompositorKind::Driftwm; }
 
 } // namespace compositors

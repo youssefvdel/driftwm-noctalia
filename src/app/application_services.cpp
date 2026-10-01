@@ -695,7 +695,7 @@ void Application::initStyleThemeAndWayland() {
   if (!m_wayland.connect()) {
     throw std::runtime_error("failed to connect to Wayland display");
   }
-  m_compositorPlatform.initialize();
+  m_compositorPlatform.initialize(&m_fileWatcher);
   m_screenTimeService.initialize(&m_wayland);
   syncScreenTimeService();
   m_screenTimeService.setChangeCallback([this]() {

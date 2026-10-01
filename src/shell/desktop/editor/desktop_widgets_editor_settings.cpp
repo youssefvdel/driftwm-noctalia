@@ -710,6 +710,28 @@ namespace {
     );
   }
 
+  std::string resolveDesktopSettingLabel(const settings::WidgetSettingSpec& spec) {
+    if (!spec.literalLabel.empty()) {
+      return spec.literalLabel;
+    }
+    const std::string primary = i18n::tr(spec.labelKey);
+    if (!primary.starts_with("!!")) {
+      return primary;
+    }
+    // Legacy desktop settings were stored as plain strings ("...bands") while
+    // newer ones use the bar-style "...bands.label" object form. Fall back to
+    // the base key so both resolve.
+    constexpr std::string_view kLabelSuffix = ".label";
+    if (spec.labelKey.ends_with(kLabelSuffix)) {
+      const std::string base(spec.labelKey.substr(0, spec.labelKey.size() - kLabelSuffix.size()));
+      const std::string fallback = i18n::tr(base);
+      if (!fallback.starts_with("!!")) {
+        return fallback;
+      }
+    }
+    return primary;
+  }
+
   void addSpecSettings(
       Flex& content, const std::vector<settings::WidgetSettingSpec>& specs, const Settings& s,
       DesktopWidgetsEditor* editor
@@ -719,7 +741,7 @@ namespace {
         continue;
       }
       // Plugin manifest specs carry literal labels; built-in specs carry i18n keys.
-      const auto label = !spec.literalLabel.empty() ? spec.literalLabel : i18n::tr(spec.labelKey);
+      const auto label = resolveDesktopSettingLabel(spec);
 
       switch (spec.control) {
       case settings::WidgetControlKind::Bool: {
@@ -980,7 +1002,8 @@ void DesktopWidgetsEditor::applySettingChange(const std::string& key, WidgetSett
     }
 
     newWidget->create();
-    if (state->type == "audio_visualizer" || state->type == "fancy_audio_visualizer" || state->type == "button") {
+    if (state->type == "audio_visualizer" || state->type == "fancy_audio_visualizer"
+        || state->type == "driftwm_minimap" || state->type == "button") {
       newWidget->setEditorPreview(true);
     }
     newWidget->setAnimationManager(&surface->animations);
@@ -1018,8 +1041,11 @@ void DesktopWidgetsEditor::applySettingChange(const std::string& key, WidgetSett
     view.widget = std::move(newWidget);
 
     applyViewState(view, *state, false);
-    if ((state->type == "audio_visualizer" || state->type == "fancy_audio_visualizer") && surface->surface != nullptr) {
-      surface->surface->requestFrameTick();
+    if (state->type == "audio_visualizer" || state->type == "fancy_audio_visualizer"
+        || state->type == "driftwm_minimap") {
+      if (surface->surface != nullptr) {
+        surface->surface->requestFrameTick();
+      }
     }
     updateSelectionVisuals(*surface);
     if (rebuildInspector) {

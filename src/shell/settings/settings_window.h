@@ -1,5 +1,6 @@
 #pragma once
 
+#include "compositors/driftwm/driftwm_config_document.h"
 #include "core/timer_manager.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_dispatcher.h"
@@ -171,6 +172,9 @@ private:
   void scheduleDeferredRebuild();
   void markPluginListDirty();
   void refreshPluginListIfNeeded();
+  // Renders the DriftWM section straight into `target`, reading driftwm's own
+  // config.toml. Present only on DriftWM; see CompositorPlatform.
+  void addDriftwmContent(Flex& target, float scale);
   void maybeOpenPendingEditor();
   void applyPendingContentScrollTarget(float margin);
   void scrollFocusedAreaIntoView(class InputArea* area);
@@ -236,6 +240,14 @@ private:
   scripting::PluginManager* m_pluginManager = nullptr;
   // Cached PluginManager::list() — discovery can spawn git, so refresh it off the UI path.
   std::vector<scripting::PluginStatus> m_pluginList;
+  // Reason the driftwm config could not be read, or the last rejected write.
+  std::string m_driftwmStatusMessage;
+  // Set by a row whose write was refused, carried into the next render so the
+  // banner can explain why the value did not change.
+  std::string m_driftwmConfigError;
+  bool m_driftwmStatusIsError = false;
+  // Parsed driftwm config for the current render, owned so the content can read it.
+  std::optional<compositors::driftwm::DriftwmConfigDocument> m_driftwmDocument;
   bool m_pluginListDirty = true;
   bool m_pluginListRefreshInFlight = false;
   std::uint64_t m_pluginListRefreshGeneration = 0;

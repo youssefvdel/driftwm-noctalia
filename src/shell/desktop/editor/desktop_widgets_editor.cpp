@@ -384,12 +384,12 @@ void DesktopWidgetsEditor::syncSurfaces() {
 void DesktopWidgetsEditor::createSurface(const WaylandOutput& output) {
   auto surfaceConfig = LayerSurfaceConfig{
       .nameSpace = std::string(m_profile.layerNamespace),
-      .layer = LayerShellLayer::Bottom,
+      .layer = LayerShellLayer::Overlay,
       .anchor = LayerShellAnchor::Top | LayerShellAnchor::Bottom | LayerShellAnchor::Left | LayerShellAnchor::Right,
       .width = 0,
       .height = 0,
       .exclusiveZone = -1,
-      .keyboard = LayerShellKeyboard::OnDemand,
+      .keyboard = LayerShellKeyboard::Exclusive,
       .defaultWidth = static_cast<std::uint32_t>(output.effectiveLogicalWidth()),
       .defaultHeight = static_cast<std::uint32_t>(output.effectiveLogicalHeight()),
   };
@@ -798,6 +798,7 @@ void DesktopWidgetsEditor::rebuildScene(OverlaySurface& surface) {
     widget->create();
     if (widgetState.type == "audio_visualizer"
         || widgetState.type == "fancy_audio_visualizer"
+        || widgetState.type == "driftwm_minimap"
         || widgetState.type == "button") {
       widget->setEditorPreview(true);
     }
@@ -826,7 +827,8 @@ void DesktopWidgetsEditor::rebuildScene(OverlaySurface& surface) {
     widget->setBox(widgetState.boxWidth, widgetState.boxHeight);
     widget->update(renderer);
     widget->layout(renderer);
-    if ((widgetState.type == "audio_visualizer" || widgetState.type == "fancy_audio_visualizer")
+    if ((widgetState.type == "audio_visualizer" || widgetState.type == "fancy_audio_visualizer"
+         || widgetState.type == "driftwm_minimap")
         && surface.surface != nullptr) {
       surface.surface->requestFrameTick();
     }

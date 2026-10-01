@@ -14,6 +14,9 @@ class SystemMonitorService;
 class PipeWireService;
 class PipeWireSpectrum;
 class WeatherService;
+namespace compositors::driftwm {
+  class DriftwmStateSource;
+}
 
 class DesktopWidgetFactory {
 public:
@@ -32,5 +35,6 @@ private:
   MprisService* m_mpris = nullptr;
   HttpClient* m_httpClient = nullptr;
   SystemMonitorService* m_sysmon = nullptr;
+  compositors::driftwm::DriftwmStateSource* m_driftwmStateSource = nullptr;
   DesktopWidgetScriptDeps m_scriptDeps;
 };

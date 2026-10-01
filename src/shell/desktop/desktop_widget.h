@@ -33,6 +33,14 @@ public:
 
   [[nodiscard]] virtual bool wantsSecondTicks() const { return false; }
   [[nodiscard]] virtual bool needsFrameTick() const { return false; }
+  // Whether this widget's layer-shell surface should use the Top layer instead
+  // of the host's default Bottom policy (e.g. minimap overlay). False preserves
+  // the existing stacking for every other widget type.
+  [[nodiscard]] virtual bool wantsTopLayer() const noexcept { return false; }
+  // Whether this widget's layer-shell surface should expose an empty input
+  // region so clicks pass to apps underneath (display-only). False keeps the
+  // host's default full-surface input.
+  [[nodiscard]] virtual bool wantsClickThrough() const noexcept { return false; }
   virtual void onFrameTick(float deltaMs, Renderer& renderer) {
     (void)deltaMs;
     (void)renderer;

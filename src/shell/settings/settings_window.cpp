@@ -1,5 +1,7 @@
 #include "shell/settings/settings_window.h"
 
+#include "compositors/compositor_platform.h"
+#include "compositors/driftwm/driftwm_config_service.h"
 #include "config/config_service.h"
 #include "config/config_types.h"
 #include "core/deferred_call.h"
@@ -166,7 +168,16 @@ namespace {
 
 SettingsWindow::SettingsWindow() = default;
 
-SettingsWindow::~SettingsWindow() { destroyWindow(); }
+SettingsWindow::~SettingsWindow() {
+  // The DriftWM config service outlives this window, so its callback must not keep
+  // pointing at a destroyed SettingsWindow.
+  if (m_platform != nullptr) {
+    if (auto* driftwm = m_platform->driftwmConfigService(); driftwm != nullptr) {
+      driftwm->setExternalChangeCallback({});
+    }
+  }
+  destroyWindow();
+}
 
 void SettingsWindow::initialize(
     WaylandConnection& wayland, ConfigService* config, RenderContext* renderContext, DependencyService* dependencies,
@@ -181,6 +192,15 @@ void SettingsWindow::initialize(
   m_upower = upower;
   m_accounts = accounts;
   m_showAdvanced = m_config != nullptr ? m_config->config().shell.settingsShowAdvanced : false;
+  // driftwm's config.toml can be edited by hand while the tab is open, so re-read it
+  // on any external write instead of showing values that are no longer on disk.
+  if (auto* driftwm = m_platform != nullptr ? m_platform->driftwmConfigService() : nullptr; driftwm != nullptr) {
+    driftwm->setExternalChangeCallback([this]() {
+      if (m_selectedSection == "driftwm") {
+        requestContentRebuild();
+      }
+    });
+  }
   m_modalHost.initialize(
       m_inputDispatcher,
       [this]() {

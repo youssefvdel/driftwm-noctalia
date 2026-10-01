@@ -566,6 +566,27 @@
         "centered": "Centered",
         "change-image": "Change…",
         "circle": "Circle",
+        "always-on-top": {
+          "description": "Keep this map above windows instead of behind them",
+          "label": "Keep on Top"
+        },
+        "click-modifier": {
+          "description": "Hold this key while clicking the map, or pick None to always click",
+          "label": "Click Key"
+        },
+        "click-modifier-alt": "Alt",
+        "click-modifier-ctrl": "Ctrl",
+        "click-modifier-none": "None",
+        "click-modifier-shift": "Shift",
+        "click-modifier-super": "Super",
+        "click-through": {
+          "description": "See-through by default (clicks pass to apps); holding the click key temporarily makes the map clickable",
+          "label": "See-Through Map"
+        },
+        "click-to-move": {
+          "description": "Click anywhere on the map to jump your view there",
+          "label": "Click Map to Move View"
+        },
         "clock-style": "Clock Style",
         "clock-style-analog": "Analog",
         "clock-style-digital": "Digital",
@@ -601,6 +622,62 @@
         "label": "Label",
         "label-min-width": "Label Min Width",
         "layout": "Layout",
+        "map-background-color": {
+          "description": "Color behind everything on the map",
+          "label": "Map Background Color"
+        },
+        "map-bookmark-color": {
+          "description": "Color of the dots for saved places",
+          "label": "Saved Place Color"
+        },
+        "map-fullscreen-color": {
+          "description": "Color of the dot shown when a window fills the screen",
+          "label": "Fullscreen Dot Color"
+        },
+        "map-height": {
+          "description": "How tall the map looks on your desktop",
+          "label": "Map Height"
+        },
+        "map-layer-color": {
+          "description": "Color of boxes for panels and other overlays",
+          "label": "Panel Box Color"
+        },
+        "map-output-active-color": {
+          "description": "Color of the box for the monitor you are using now",
+          "label": "Current Monitor Color"
+        },
+        "map-output-color": {
+          "description": "Color of boxes for monitors you are not using",
+          "label": "Monitor Box Color"
+        },
+        "map-pinned-color": {
+          "description": "Color of boxes for windows that stay fixed on screen",
+          "label": "Sticky Window Color"
+        },
+        "map-text-color": {
+          "description": "Color of names written on window boxes",
+          "label": "Window Name Color"
+        },
+        "map-viewport-color": {
+          "description": "Color of the box showing what you can see right now",
+          "label": "Visible Area Color"
+        },
+        "map-width": {
+          "description": "How wide the map looks on your desktop",
+          "label": "Map Width"
+        },
+        "map-window-color": {
+          "description": "Color of boxes for ordinary windows",
+          "label": "Window Box Color"
+        },
+        "map-window-focused-color": {
+          "description": "Color of the box for the window you are using now",
+          "label": "Selected Window Color"
+        },
+        "map-window-suspended-color": {
+          "description": "Color of boxes for windows that are paused out of view",
+          "label": "Hidden Window Color"
+        },
         "mirrored": "Mirrored",
         "network-speed-compact": "Compact Network Speed",
         "network-speed-unit": "Network Speed Unit",
@@ -617,21 +694,53 @@
         "secondary-color": "Secondary Color",
         "sensitivity": "Sensitivity",
         "shadow": "Shadow",
+        "show-bookmarks": {
+          "description": "Mark each saved place with a dot",
+          "label": "Show Saved Places"
+        },
         "show-caps-lock": "Caps Lock Warning",
         "show-device": "Show Device",
         "show-events": "Show Events",
         "show-forecast": "Show Forecast",
+        "show-fullscreen-indicator": {
+          "description": "Show a dot while a window fills the whole screen",
+          "label": "Show Fullscreen Dot"
+        },
         "show-keyboard-layout": "Keyboard Layout",
         "show-label": "Show Label",
+        "show-layers": {
+          "description": "Draw boxes for desktop panels and overlays",
+          "label": "Show Panels"
+        },
         "show-login-button": "Login Button",
         "show-media": "Media",
+        "show-outputs": {
+          "description": "Draw a box for each connected monitor",
+          "label": "Show Monitors"
+        },
         "show-password-hint": "Password Hint",
+        "show-pinned": {
+          "description": "Draw windows that stay fixed on the screen",
+          "label": "Show Sticky Windows"
+        },
         "show-session-buttons": "Session Buttons",
+        "show-titles": {
+          "description": "Write names inside the biggest window boxes",
+          "label": "Show Window Names"
+        },
         "show-unlock-hint": "Unlock Hint",
         "show-vpn-label": "Show VPN Label",
         "show-weather": "Weather",
         "show-week-numbers": "Show Week Numbers",
         "show-when-idle": "Show When Idle",
+        "show-windows": {
+          "description": "Draw a box for each open window",
+          "label": "Show Windows"
+        },
+        "smoothing-ms": {
+          "description": "How smoothly the visible area follows you; 0 jumps instantly",
+          "label": "Camera Smoothing"
+        },
         "stat": "Stat",
         "stat-cpu-freq": "CPU Freq",
         "stat-cpu-temp": "CPU Temp",
@@ -676,6 +785,7 @@
         "button": "Button",
         "calendar": "Calendar",
         "clock": "Clock",
+        "driftwm-minimap": "Workspace Map",
         "fancy-audio-visualizer": "Fancy Audio Visualizer",
         "label": "Label",
         "login-box": "Login Box",
@@ -1049,6 +1159,29 @@
         "title": "Pick a Color"
       }
     },
+    "driftwm": {
+      "autostart": {
+        "placeholder": "One command per line"
+      },
+      "default-badge": "default",
+      "group": {
+        "autostart": "Autostart",
+        "background": "Background",
+        "cursor": "Cursor",
+        "decorations": "Decorations",
+        "effects": "Effects",
+        "general": "General",
+        "input": "Input",
+        "mouse": "Mouse",
+        "navigation": "Navigation",
+        "session": "Session",
+        "snap": "Snap",
+        "xwayland": "Xwayland",
+        "zoom": "Zoom"
+      },
+      "missing-config": "No driftwm config at {path}.",
+      "unreadable-config": "Could not read {path}. Fix it by hand, then reopen this tab."
+    },
     "entities": {
       "bar": {
         "create": "Create",
@@ -1350,6 +1483,7 @@
         "control-center": "Control Center",
         "desktop": "Desktop",
         "dock": "Dock",
+        "driftwm": "DriftWM",
         "hooks": "Hooks",
         "keybinds": "Keybinds",
         "launcher": "Launcher",

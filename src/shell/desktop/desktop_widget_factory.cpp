@@ -8,6 +8,7 @@
 #include "shell/desktop/widgets/desktop_button_widget.h"
 #include "shell/desktop/widgets/desktop_calendar_widget.h"
 #include "shell/desktop/widgets/desktop_clock_widget.h"
+#include "shell/desktop/widgets/desktop_driftwm_minimap_widget.h"
 #include "shell/desktop/widgets/desktop_fancy_audio_visualizer_widget.h"
 #include "shell/desktop/widgets/desktop_label_widget.h"
 #include "shell/desktop/widgets/desktop_login_box_widget.h"
@@ -185,7 +186,8 @@ namespace {
 DesktopWidgetFactory::DesktopWidgetFactory(DesktopWidgetRuntimeServices services)
     : m_calendar(services.calendar), m_pipewire(services.pipewire), m_pipewireSpectrum(services.pipewireSpectrum),
       m_weather(services.weather), m_mpris(services.mpris), m_httpClient(services.httpClient),
-      m_sysmon(services.sysmon), m_scriptDeps(services.scriptDeps) {}
+      m_sysmon(services.sysmon), m_driftwmStateSource(services.driftwmStateSource),
+      m_scriptDeps(services.scriptDeps) {}
 
 std::unique_ptr<DesktopWidget> DesktopWidgetFactory::create(
     const std::string& type, const std::unordered_map<std::string, WidgetSettingValue>& settings, float contentScale
@@ -217,6 +219,62 @@ std::unique_ptr<DesktopWidget> DesktopWidgetFactory::create(
         .timezone = getStringSetting(settings, "timezone", ""),
     });
     applyCommonSettings(*widget, settings);
+    widget->setContentScale(contentScale);
+    return widget;
+  }
+
+  if (type == "driftwm_minimap") {
+    // Every mark on the map comes from DriftWM's own IPC, so there is nothing to
+    // fall back to on another compositor: no state source, no widget.
+    if (m_driftwmStateSource == nullptr) {
+      kLog.warn("desktop widget factory: driftwm_minimap requires DriftwmStateSource");
+      return nullptr;
+    }
+    // The bar's ColorSpec fields defaulted to unset so each mark could fall back
+    // to a themed role with its own alpha; an absent key has to stay unset here.
+    const auto optionalColor = [&settings](const char* key) {
+      return getOptionalColorSpecSetting(settings, key).value_or(clearColorSpec());
+    };
+    // Click key: None/Super/Alt/Ctrl/Shift, default Super. Unknown values fall
+    // back to Super rather than silently disabling clicks.
+    std::string clickModifier = getStringSetting(settings, "click_modifier", "super");
+    if (clickModifier != "none" && clickModifier != "super" && clickModifier != "alt" && clickModifier != "ctrl"
+        && clickModifier != "shift") {
+      kLog.warn("desktop widget factory: invalid driftwm_minimap click_modifier '{}', using 'super'", clickModifier);
+      clickModifier = "super";
+    }
+    auto widget = std::make_unique<DesktopDriftwmMinimapWidget>(
+        *m_driftwmStateSource,
+        DesktopDriftwmMinimapWidget::Options{
+            .width = std::clamp(getIntSetting(settings, "map_width", 220), 32, 2048),
+            .height = std::clamp(getIntSetting(settings, "map_height", 120), 32, 1024),
+            .showOutputs = getBoolSetting(settings, "show_outputs", true),
+            .showWindows = getBoolSetting(settings, "show_windows", true),
+            .showTitles = getBoolSetting(settings, "show_titles", true),
+            .showLayers = getBoolSetting(settings, "show_layers", false),
+            .showPinned = getBoolSetting(settings, "show_pinned", true),
+            .showBookmarks = getBoolSetting(settings, "show_bookmarks", true),
+            .clickToMove = getBoolSetting(settings, "click_to_move", true),
+            .showFullscreenIndicator = getBoolSetting(settings, "show_fullscreen_indicator", true),
+            .smoothingMs = std::clamp(getIntSetting(settings, "smoothing_ms", 120), 0, 1000),
+            .alwaysOnTop = getBoolSetting(settings, "always_on_top", false),
+            .clickModifier = std::move(clickModifier),
+            .clickThrough = getBoolSetting(settings, "click_through", true),
+            .backgroundColor = optionalColor("map_background_color"),
+            .outputColor = optionalColor("map_output_color"),
+            .outputActiveColor = optionalColor("map_output_active_color"),
+            .windowColor = optionalColor("map_window_color"),
+            .windowFocusedColor = optionalColor("map_window_focused_color"),
+            .windowSuspendedColor = optionalColor("map_window_suspended_color"),
+            .viewportColor = optionalColor("map_viewport_color"),
+            .bookmarkColor = optionalColor("map_bookmark_color"),
+            .layerColor = optionalColor("map_layer_color"),
+            .pinnedColor = optionalColor("map_pinned_color"),
+            .fullscreenColor = optionalColor("map_fullscreen_color"),
+            .textColor = optionalColor("map_text_color"),
+        }
+    );
+    applyCommonSettings(*widget, settings, false);
     widget->setContentScale(contentScale);
     return widget;
   }

@@ -2,6 +2,7 @@
 #include "application.h"
 #include "application_internal.h"
 #include "compositors/compositor_detect.h"
+#include "compositors/compositor_platform.h"
 #include "config/config_types.h"
 #include "core/build_info.h"
 #include "core/deferred_call.h"
@@ -481,8 +482,10 @@ void Application::initInputDispatch() {
       m_lockscreenWidgetsController.onKeyboardEvent(event);
       return;
     }
+    // The minimap's hold-to-click modifier gate needs the global key feed even
+    // outside edit mode (best-effort: only while a Noctalia surface is focused).
+    m_desktopWidgetsController.onKeyboardEvent(event);
     if (m_desktopWidgetsController.isEditing()) {
-      m_desktopWidgetsController.onKeyboardEvent(event);
       return;
     }
     if (m_settingsWindow.ownsKeyboardSurface(m_wayland.lastKeyboardSurface())) {
@@ -973,6 +976,7 @@ void Application::initWidgetControllersAndCallbacks() {
       .mpris = m_mprisService.get(),
       .httpClient = &m_httpClient,
       .sysmon = m_systemMonitor.get(),
+      .driftwmStateSource = m_compositorPlatform.driftwmStateSource(),
       .scriptDeps = desktopWidgetScriptDeps,
   };
   const DesktopWidgetServices lockscreenWidgetServices{

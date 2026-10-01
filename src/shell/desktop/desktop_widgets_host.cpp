@@ -1,6 +1,8 @@
 #include "shell/desktop/desktop_widgets_host.h"
 
 #include "config/config_service.h"
+#include "core/input/key_modifiers.h"
+#include "core/input/key_symbols.h"
 #include "core/log.h"
 #include "render/core/shared_texture_cache.h"
 #include "render/render_context.h"
@@ -8,6 +10,7 @@
 #include "render/scene/node.h"
 #include "scripting/plugin_registry.h"
 #include "shell/desktop/desktop_widget_layout.h"
+#include "shell/desktop/widgets/desktop_driftwm_minimap_widget.h"
 #include "shell/desktop/widget_transform.h"
 #include "shell/wallpaper/wallpaper_geometry.h"
 #include "time/time_format.h"
@@ -252,6 +255,17 @@ void DesktopWidgetsHost::createInstance(const DesktopWidgetState& state, const W
     return;
   }
 
+  // Pointer events carry no modifier state, so the minimap reads the seat's
+  // live mask at click time (same source as annotation Shift-constrain). The
+  // host also feeds global key events into the widget so the hold-to-click gate
+  // works while a Noctalia surface holds keyboard focus.
+  if (auto* minimap = dynamic_cast<DesktopDriftwmMinimapWidget*>(widget.get()); minimap != nullptr) {
+    WaylandConnection* wayland = m_wayland;
+    minimap->setModifierProvider([wayland]() -> std::uint32_t {
+      return wayland != nullptr ? wayland->keyboardModifiers() : 0U;
+    });
+  }
+
   widget->create();
   widget->setBox(state.boxWidth, state.boxHeight);
   ScaledRenderer measureRenderer(*m_renderContext, output.configuredScale());
@@ -272,9 +286,15 @@ void DesktopWidgetsHost::createInstance(const DesktopWidgetState& state, const W
       clampedState.cx, clampedState.cy, intrinsicWidth, intrinsicHeight, 1.0F, clampedState.rotationRad, outW, outH
   );
 
+  // Only a widget that opts in (currently the minimap's `always_on_top`) may
+  // rise to the Top layer; every other type keeps the host's Bottom policy.
+  // exclusiveZone and keyboard stay fixed so the surface never reserves space
+  // or grabs focus.
+  const LayerShellLayer surfaceLayer =
+      (widget != nullptr && widget->wantsTopLayer()) ? LayerShellLayer::Top : LayerShellLayer::Bottom;
   auto surfaceConfig = LayerSurfaceConfig{
       .nameSpace = desktopWidgetNamespace(clampedState),
-      .layer = LayerShellLayer::Bottom,
+      .layer = surfaceLayer,
       .anchor = LayerShellAnchor::Top | LayerShellAnchor::Left,
       .width = geometry.surfaceWidth,
       .height = geometry.surfaceHeight,
@@ -295,6 +315,19 @@ void DesktopWidgetsHost::createInstance(const DesktopWidgetState& state, const W
   instance->intrinsicHeight = intrinsicHeight;
 
   instance->surface = std::make_unique<LayerSurface>(*m_wayland, std::move(surfaceConfig));
+  // The minimap defaults to see-through (clicks pass to apps); holding the
+  // configured click key temporarily makes it clickable for camera move /
+  // click-to-zoom. The widget notifies back through the callback when the
+  // modifier gate flips so no rebuild is needed.
+  if (auto* minimap = dynamic_cast<DesktopDriftwmMinimapWidget*>(instance->widget.get()); minimap != nullptr) {
+    DesktopWidgetInstance* self = instance.get();
+    minimap->setClickThroughCallback([self](bool clickThrough) {
+      if (self->surface != nullptr) {
+        self->surface->setClickThrough(clickThrough);
+      }
+    });
+  }
+  instance->surface->setClickThrough(instance->widget->wantsClickThrough());
   instance->surface->setRenderContext(m_renderContext);
   instance->surface->setAnimationManager(&instance->animations);
 
@@ -552,4 +585,44 @@ bool DesktopWidgetsHost::onPointerEvent(const PointerEvent& event) {
   }
 
   return true;
+}
+
+void DesktopWidgetsHost::onKeyboardEvent(const KeyboardEvent& event) {
+  if (!m_visible) {
+    return;
+  }
+  // Global modifier feed for the minimap's hold-to-click gate. Wayland only
+  // delivers key events while a Noctalia surface holds keyboard focus, so this
+  // is best-effort: reliable when settings/panels/launcher are focused, absent
+  // when focus sits on an app window (documented on the widget).
+  const bool isModifierKey = KeySymbol::isModifier(event.sym);
+  for (auto& instance : m_instances) {
+    auto* minimap = dynamic_cast<DesktopDriftwmMinimapWidget*>(instance->widget.get());
+    if (minimap == nullptr) {
+      continue;
+    }
+    const std::string& modifier = minimap->clickModifierName();
+    if (modifier.empty() || modifier == "none") {
+      continue;
+    }
+    std::uint32_t bit = 0U;
+    if (modifier == "super" && KeySymbol::isSuperModifier(event.sym)) {
+      bit = KeyMod::Super;
+    } else if (modifier == "shift" && (event.sym == XKB_KEY_Shift_L || event.sym == XKB_KEY_Shift_R)) {
+      bit = KeyMod::Shift;
+    } else if (modifier == "ctrl" && (event.sym == XKB_KEY_Control_L || event.sym == XKB_KEY_Control_R)) {
+      bit = KeyMod::Ctrl;
+    } else if (modifier == "alt" && (event.sym == XKB_KEY_Alt_L || event.sym == XKB_KEY_Alt_R)) {
+      bit = KeyMod::Alt;
+    }
+    if (bit != 0U && isModifierKey) {
+      minimap->setModifierClickActive(event.pressed);
+    } else if (event.pressed) {
+      // Non-modifier press carries the live mask: re-sync in case the press
+      // and modifier arrived in either order.
+      minimap->onModifierState(event.modifiers);
+    } else if (!isModifierKey) {
+      minimap->onModifierState(event.modifiers);
+    }
+  }
 }

@@ -2,6 +2,11 @@
 
 #include "compositors/compositor_detect.h"
 #include "compositors/compositor_runtime.h"
+#include "compositors/driftwm/driftwm_config_service.h"
+#include "compositors/driftwm/driftwm_keyboard_backend.h"
+#include "compositors/driftwm/driftwm_output_backend.h"
+#include "compositors/driftwm/driftwm_runtime.h"
+#include "compositors/driftwm/driftwm_state_source.h"
 #include "compositors/ext_workspace/ext_workspace_output_backend.h"
 #include "compositors/hyprland/hyprland_keyboard_backend.h"
 #include "compositors/hyprland/hyprland_output_backend.h"
@@ -324,6 +329,17 @@ namespace {
     return compositors::ext_workspace::setOutputPower(on);
   }
 
+  // The DriftWM Subscribe stream is the only compositor socket in the runtime
+  // registry that no workspace-metadata backend owns, so the workspace poll source
+  // forwards its hooks instead.
+  [[nodiscard]] compositors::driftwm::DriftwmRuntime*
+  driftwmStateStream(compositors::CompositorRuntimeRegistry* registry) noexcept {
+    if (registry == nullptr || compositors::detect() != compositors::CompositorKind::Driftwm) {
+      return nullptr;
+    }
+    return &registry->driftwm();
+  }
+
   [[nodiscard]] std::unique_ptr<compositors::OutputPowerBackend>
   createOutputPowerBackend(compositors::CompositorRuntimeRegistry& runtimeRegistry) {
     switch (compositors::detect()) {
@@ -364,6 +380,8 @@ namespace {
     case compositors::CompositorKind::Dwl:
     case compositors::CompositorKind::Labwc:
     case compositors::CompositorKind::Kde:
+    // DriftWM's IPC has no power verb, so it stays on the generic path.
+    case compositors::CompositorKind::Driftwm:
     case compositors::CompositorKind::Unknown:
       return std::make_unique<LambdaOutputPowerBackend>(&setGenericOutputPower);
     }
@@ -379,6 +397,8 @@ namespace {
       return std::make_unique<FocusedOutputAdapter<NiriOutputBackend>>(runtimeRegistry.niri());
     case compositors::CompositorKind::Sway:
       return std::make_unique<FocusedOutputAdapter<SwayOutputBackend>>(runtimeRegistry.sway());
+    case compositors::CompositorKind::Driftwm:
+      return std::make_unique<FocusedOutputAdapter<DriftwmOutputBackend>>(runtimeRegistry.driftwm());
     case compositors::CompositorKind::Triad:
       return std::make_unique<FocusedOutputAdapter<TriadOutputBackend>>(runtimeRegistry.triad());
     case compositors::CompositorKind::Dwl:
@@ -407,6 +427,9 @@ namespace {
     case compositors::CompositorKind::Dwl:
     case compositors::CompositorKind::Kde:
     case compositors::CompositorKind::Labwc:
+    // DriftWM exports its bookmarks over ext-workspace-v1, so the generic
+    // ext-workspace backend already covers it.
+    case compositors::CompositorKind::Driftwm:
     case compositors::CompositorKind::Unknown:
       break;
     }
@@ -428,6 +451,8 @@ namespace {
       return std::make_unique<KeyboardLayoutBackendAdapter<TriadKeyboardBackend>>(runtimeRegistry.triad());
     case compositors::CompositorKind::Umbriel:
       return std::make_unique<KeyboardLayoutBackendAdapter<UmbrielKeyboardBackend>>(runtimeRegistry.umbriel());
+    case compositors::CompositorKind::Driftwm:
+      return std::make_unique<KeyboardLayoutBackendAdapter<DriftwmKeyboardBackend>>(runtimeRegistry.driftwm());
     case compositors::CompositorKind::Dwl:
     case compositors::CompositorKind::Labwc:
     case compositors::CompositorKind::Kde:
@@ -633,11 +658,21 @@ void CompositorPlatform::startKdeActiveWindow(SessionBus& bus) {
   m_kwinActiveWindow->start();
 }
 
-void CompositorPlatform::initialize() {
+void CompositorPlatform::initialize(FileWatcher* fileWatcher) {
   if (m_initialized) {
     return;
   }
   m_initialized = true;
+
+  // One decoded state source per process: several bars can then show the minimap
+  // without opening a second Subscribe stream.
+  if (compositors::detect() == compositors::CompositorKind::Driftwm) {
+    m_driftwmStateSource = std::make_unique<compositors::driftwm::DriftwmStateSource>(m_runtimeRegistry->driftwm());
+    if (fileWatcher != nullptr) {
+      m_driftwmConfigService =
+          std::make_unique<compositors::driftwm::DriftwmConfigService>(m_runtimeRegistry->driftwm(), *fileWatcher);
+    }
+  }
 
   m_workspaces->initialize();
   for (const auto& output : m_wayland.outputs()) {
@@ -662,6 +697,8 @@ void CompositorPlatform::cleanup() {
   if (m_workspaces != nullptr) {
     m_workspaces->cleanup();
   }
+  m_driftwmStateSource.reset();
+  m_driftwmConfigService.reset();
   m_initialized = false;
 }
 
@@ -671,6 +708,14 @@ compositors::niri::NiriRuntime& CompositorPlatform::niriRuntime() noexcept { ret
 
 const compositors::niri::NiriRuntime& CompositorPlatform::niriRuntime() const noexcept {
   return m_runtimeRegistry->niri();
+}
+
+compositors::driftwm::DriftwmStateSource* CompositorPlatform::driftwmStateSource() noexcept {
+  return m_driftwmStateSource.get();
+}
+
+compositors::driftwm::DriftwmConfigService* CompositorPlatform::driftwmConfigService() noexcept {
+  return m_driftwmConfigService.get();
 }
 
 bool CompositorPlatform::hasXdgShell() const noexcept { return m_wayland.hasXdgShell(); }
@@ -1185,6 +1230,10 @@ std::size_t CompositorPlatform::addWorkspacePollFds(std::vector<pollfd>& fds) co
         {.fd = m_workspaceMetadataBackend->pollFd(), .events = m_workspaceMetadataBackend->pollEvents(), .revents = 0}
     );
   }
+  if (auto* stateStream = driftwmStateStream(m_runtimeRegistry.get()); stateStream != nullptr
+      && stateStream->pollFd() >= 0) {
+    fds.push_back({.fd = stateStream->pollFd(), .events = stateStream->pollEvents(), .revents = 0});
+  }
   return start;
 }
 
@@ -1194,6 +1243,12 @@ int CompositorPlatform::workspacePollTimeoutMs() const noexcept {
     const int trackerTimeout = m_workspaceMetadataBackend->pollTimeoutMs();
     if (trackerTimeout >= 0 && (timeout < 0 || trackerTimeout < timeout)) {
       timeout = trackerTimeout;
+    }
+  }
+  if (auto* stateStream = driftwmStateStream(m_runtimeRegistry.get()); stateStream != nullptr) {
+    const int streamTimeout = stateStream->pollTimeoutMs();
+    if (streamTimeout >= 0 && (timeout < 0 || streamTimeout < timeout)) {
+      timeout = streamTimeout;
     }
   }
   return timeout;
@@ -1215,8 +1270,19 @@ void CompositorPlatform::dispatchWorkspacePoll(const std::vector<pollfd>& fds, s
         && index < fds.size()
         && fds[index].fd == m_workspaceMetadataBackend->pollFd()) {
       revents = fds[index].revents;
+      ++index;
     }
     m_workspaceMetadataBackend->dispatchPoll(revents);
+  }
+
+  // Also services a pending reconnect when no fd was advertised and the loop woke
+  // on the runtime's own timeout.
+  if (auto* stateStream = driftwmStateStream(m_runtimeRegistry.get()); stateStream != nullptr) {
+    short revents = 0;
+    if (stateStream->pollFd() >= 0 && index < fds.size() && fds[index].fd == stateStream->pollFd()) {
+      revents = fds[index].revents;
+    }
+    stateStream->dispatchPoll(revents);
   }
 }
 
@@ -1556,6 +1622,9 @@ bool CompositorPlatform::requestSessionExit() const {
     return m_runtimeRegistry->niri().requestAction(
         nlohmann::json{{"Quit", nlohmann::json{{"skip_confirmation", true}}}}, true
     );
+  case compositors::CompositorKind::Driftwm:
+    // noctalia's session menu is its own confirmation, so ask driftwm to exit outright.
+    return m_runtimeRegistry->driftwm().requestAction("quit", true);
   case compositors::CompositorKind::Triad:
     return m_runtimeRegistry->triad().requestAction("exit-session");
   case compositors::CompositorKind::Mango:

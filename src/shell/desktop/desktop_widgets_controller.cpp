@@ -412,6 +412,11 @@ bool DesktopWidgetsController::onPointerEvent(const PointerEvent& event) {
 }
 
 void DesktopWidgetsController::onKeyboardEvent(const KeyboardEvent& event) {
+  // The minimap's hold-to-click gate needs modifier state outside edit mode
+  // too, so the host always gets the feed; the editor only gets it while open.
+  if (m_host != nullptr) {
+    m_host->onKeyboardEvent(event);
+  }
   if (!isEditing() || m_editor == nullptr) {
     return;
   }

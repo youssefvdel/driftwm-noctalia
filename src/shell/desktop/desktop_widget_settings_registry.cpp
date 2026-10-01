@@ -24,6 +24,7 @@ namespace desktop_settings {
         {.type = "button", .labelKey = "desktop-widgets.editor.types.button"},
         {.type = "calendar", .labelKey = "desktop-widgets.editor.types.calendar"},
         {.type = "clock", .labelKey = "desktop-widgets.editor.types.clock"},
+        {.type = "driftwm_minimap", .labelKey = "desktop-widgets.editor.types.driftwm-minimap"},
         {.type = "fancy_audio_visualizer", .labelKey = "desktop-widgets.editor.types.fancy-audio-visualizer"},
         {.type = "label", .labelKey = "desktop-widgets.editor.types.label"},
         {.type = "media_player", .labelKey = "desktop-widgets.editor.types.media-player"},
@@ -39,7 +40,9 @@ namespace desktop_settings {
       spec.schema.type = settings::schemaTypeForControl(control);
       spec.schema.defaultValue = std::move(defaultValue);
       spec.control = control;
-      spec.labelKey = "desktop-widgets.editor.settings." + StringUtils::snakeToKebab(key);
+      const std::string base = "desktop-widgets.editor.settings." + StringUtils::snakeToKebab(key);
+      spec.labelKey = base + ".label";
+      spec.descriptionKey = base + ".description";
       return spec;
     }
 
@@ -185,7 +188,9 @@ namespace desktop_settings {
     }
 
     const WidgetSettingVisibility backgroundOn{"background", {"true"}};
-    const bool backgroundDefault = type != "fancy_audio_visualizer";
+    // The minimap draws its own framed backdrop, so the tile background would
+    // only stack a second rounded rect behind it.
+    const bool backgroundDefault = type != "fancy_audio_visualizer" && type != "driftwm_minimap";
 
     auto bgColor = colorSpec("background_color", "surface");
     bgColor.visibleWhen = backgroundOn;
@@ -282,6 +287,87 @@ namespace desktop_settings {
       add(boolSpec("show_when_idle", true));
       add(colorSpec("color_1", "primary"));
       add(colorSpec("color_2", "primary"));
+    } else if (type == "driftwm_minimap") {
+      // A title is drawn inside a window rect, so it is meaningless without windows.
+      const WidgetSettingVisibility windowsOn{"show_windows", {"true"}};
+      const WidgetSettingVisibility layersOn{"show_layers", {"true"}};
+      const WidgetSettingVisibility pinnedOn{"show_pinned", {"true"}};
+      const WidgetSettingVisibility fullscreenOn{"show_fullscreen_indicator", {"true"}};
+      const WidgetSettingVisibility titlesOn{"show_titles", {"true"}};
+
+      add(stepperIntSpec("map_width", 220, 32.0, 2048.0, 1.0));
+      add(stepperIntSpec("map_height", 120, 32.0, 1024.0, 1.0));
+      add(boolSpec("show_outputs", true));
+      add(boolSpec("show_windows", true));
+      {
+        auto showTitles = boolSpec("show_titles", true);
+        showTitles.visibleWhen = windowsOn;
+        add(std::move(showTitles));
+      }
+      add(boolSpec("show_layers", false));
+      add(boolSpec("show_pinned", true));
+      add(boolSpec("show_bookmarks", true));
+      add(boolSpec("show_fullscreen_indicator", true));
+      add(boolSpec("click_to_move", true));
+      {
+        // Click key matters whenever clicks act: with see-through on, holding
+        // the key temporarily makes the map clickable; with it off, clicks
+        // always land but still require the key (unless "none").
+        WidgetSettingVisibility clickActive{"click_to_move", {"true"}};
+        auto clickModifier = selectSpec(
+            "click_modifier", "super",
+            {{"none", "desktop-widgets.editor.settings.click-modifier-none"},
+             {"super", "desktop-widgets.editor.settings.click-modifier-super"},
+             {"alt", "desktop-widgets.editor.settings.click-modifier-alt"},
+             {"ctrl", "desktop-widgets.editor.settings.click-modifier-ctrl"},
+             {"shift", "desktop-widgets.editor.settings.click-modifier-shift"}}
+        );
+        clickModifier.visibleWhen = std::move(clickActive);
+        add(std::move(clickModifier));
+      }
+      add(boolSpec("click_through", true));
+      add(stepperIntSpec("smoothing_ms", 120, 0.0, 1000.0, 10.0));
+      add(boolSpec("always_on_top", false));
+      add(colorSpec("map_background_color"));
+      add(colorSpec("map_output_color"));
+      add(colorSpec("map_output_active_color"));
+      {
+        auto windowColor = colorSpec("map_window_color");
+        windowColor.visibleWhen = windowsOn;
+        add(std::move(windowColor));
+      }
+      {
+        auto focused = colorSpec("map_window_focused_color");
+        focused.visibleWhen = windowsOn;
+        add(std::move(focused));
+      }
+      {
+        auto suspended = colorSpec("map_window_suspended_color");
+        suspended.visibleWhen = windowsOn;
+        add(std::move(suspended));
+      }
+      add(colorSpec("map_viewport_color"));
+      add(colorSpec("map_bookmark_color"));
+      {
+        auto layerColor = colorSpec("map_layer_color");
+        layerColor.visibleWhen = layersOn;
+        add(std::move(layerColor));
+      }
+      {
+        auto pinnedColor = colorSpec("map_pinned_color");
+        pinnedColor.visibleWhen = pinnedOn;
+        add(std::move(pinnedColor));
+      }
+      {
+        auto fullscreenColor = colorSpec("map_fullscreen_color");
+        fullscreenColor.visibleWhen = fullscreenOn;
+        add(std::move(fullscreenColor));
+      }
+      {
+        auto textColor = colorSpec("map_text_color");
+        textColor.visibleWhen = titlesOn;
+        add(std::move(textColor));
+      }
     } else if (type == "fancy_audio_visualizer") {
       const WidgetSettingVisibility barsVisible{"visualization_mode", {"bars", "bars_rings", "all"}};
       const WidgetSettingVisibility waveVisible{"visualization_mode", {"wave", "wave_rings", "all"}};

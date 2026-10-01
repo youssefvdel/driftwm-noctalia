@@ -83,7 +83,7 @@ namespace settings {
       return defaultKeybindSet(action);
     }
 
-    constexpr std::array<SettingsSectionDescriptor, 22> kSettingsSections{{
+    constexpr std::array<SettingsSectionDescriptor, 23> kSettingsSections{{
         {SettingsSection::Appearance, "appearance", "adjustments-horizontal"},
         {SettingsSection::Wallpaper, "wallpaper", "paint"},
         {SettingsSection::Templates, "templates", "color-swatch"},
@@ -106,6 +106,7 @@ namespace settings {
         {SettingsSection::Niri, "niri", "niri"},
         {SettingsSection::Bar, "bar", "crop-3-2", false},
         {SettingsSection::Plugins, "plugins", "puzzle", true, true},
+        {SettingsSection::Driftwm, "driftwm", "compass", true, true, compositors::CompositorKind::Driftwm},
     }};
 
     const SettingsSectionDescriptor& descriptorFor(SettingsSection section) {

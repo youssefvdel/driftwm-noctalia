@@ -26,6 +26,7 @@ struct ext_foreign_toplevel_handle_v1;
 class OutputProbe;
 class SessionBus;
 class WaylandWorkspaces;
+class FileWatcher;
 
 namespace compositors::kde {
   class KwinActiveWindow;
@@ -39,6 +40,11 @@ namespace compositors {
   class CompositorRuntimeRegistry;
   class FocusedOutputBackend;
   class OutputPowerBackend;
+  namespace driftwm {
+    class DriftwmConfigService;
+    class DriftwmRuntime;
+    class DriftwmStateSource;
+  } // namespace driftwm
   namespace niri {
     class NiriRuntime;
   }
@@ -56,7 +62,9 @@ public:
   CompositorPlatform(const CompositorPlatform&) = delete;
   CompositorPlatform& operator=(const CompositorPlatform&) = delete;
 
-  void initialize();
+  // `fileWatcher` supplies the inotify source the DriftWM config editor uses to
+  // notice edits made outside noctalia; null simply disables that watch.
+  void initialize(FileWatcher* fileWatcher = nullptr);
   void startKdeActiveWindow(SessionBus& bus);
   void cleanup();
 
@@ -185,6 +193,16 @@ public:
   [[nodiscard]] compositors::niri::NiriRuntime& niriRuntime() noexcept;
   [[nodiscard]] const compositors::niri::NiriRuntime& niriRuntime() const noexcept;
 
+  // The process-wide decoded view of DriftWM's Subscribe stream, or null on
+  // every other compositor. Built once so several bars share one IPC stream;
+  // the workspace poll source already pumps the stream this source listens to.
+  [[nodiscard]] compositors::driftwm::DriftwmStateSource* driftwmStateSource() noexcept;
+
+  // Editor for driftwm's own config.toml, or null on every other compositor. The
+  // settings tab uses it to read and write the compositor's file directly, so no
+  // driftwm value is ever mirrored into noctalia's config.
+  [[nodiscard]] compositors::driftwm::DriftwmConfigService* driftwmConfigService() noexcept;
+
 private:
   struct WorkspaceModelSnapshot {
     std::uint32_t outputName = 0;
@@ -220,6 +238,8 @@ private:
   ChangeCallback m_toplevelChangeCallback;
   std::unique_ptr<compositors::hyprland::HyprlandToplevelMapping> m_hyprlandToplevelMapping;
   std::unique_ptr<compositors::kde::KwinActiveWindow> m_kwinActiveWindow;
+  std::unique_ptr<compositors::driftwm::DriftwmStateSource> m_driftwmStateSource;
+  std::unique_ptr<compositors::driftwm::DriftwmConfigService> m_driftwmConfigService;
   std::unique_ptr<OutputProbe> m_outputProbe;
   std::vector<WorkspaceModelSnapshot> m_lastWorkspaceModelSnapshot;
   std::optional<std::string> m_lastFocusedCompositorWindowId;

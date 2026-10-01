@@ -1,5 +1,6 @@
 #pragma once
 
+#include "compositors/compositor_detect.h"
 #include "config/config_types.h"
 #include "core/input/key_chord.h"
 #include "ui/controls/button.h"
@@ -46,6 +47,7 @@ namespace settings {
     Niri,
     Bar,
     Plugins,
+    Driftwm,
   };
 
   struct SettingsSectionDescriptor {
@@ -55,6 +57,10 @@ namespace settings {
     bool sidebar = true;
     // Show in the sidebar even with no registry entries (fully custom-content section).
     bool alwaysShow = false;
+    // Compositor this section belongs to. Unknown means it is listed everywhere; a
+    // named one is listed only while that compositor is the running session, so a
+    // section that edits another window manager's config cannot appear here.
+    compositors::CompositorKind compositor = compositors::CompositorKind::Unknown;
   };
 
   struct ToggleSetting {

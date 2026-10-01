@@ -1,5 +1,6 @@
 #include "compositors/compositor_detect.h"
 
+#include "compositors/driftwm/driftwm_socket_path.h"
 #include "util/string_utils.h"
 
 #include <cstdlib>
@@ -51,6 +52,9 @@ namespace compositors {
       if (const char* v = std::getenv("MANGO_INSTANCE_SIGNATURE"); v != nullptr && v[0] != '\0') {
         return CompositorKind::Mango;
       }
+      if (const char* v = std::getenv("DRIFTWM_SOCKET"); v != nullptr && v[0] != '\0') {
+        return CompositorKind::Driftwm;
+      }
 
       // Fall back to the desktop env hint (covers dwl-style compositors that don't expose a socket var).
       const std::string hint = buildEnvHint();
@@ -80,6 +84,11 @@ namespace compositors {
       }
       if (StringUtils::containsInsensitive(hint, "kde") || StringUtils::containsInsensitive(hint, "plasma")) {
         return CompositorKind::Kde;
+      }
+      // DriftWM exports its identity through the desktop hint; the IPC socket is
+      // an implementation detail and may not exist yet during early startup.
+      if (StringUtils::containsInsensitive(hint, "driftwm")) {
+        return CompositorKind::Driftwm;
       }
       return CompositorKind::Unknown;
     }
@@ -111,6 +120,8 @@ namespace compositors {
       return "KDE";
     case CompositorKind::Umbriel:
       return "Umbriel";
+    case CompositorKind::Driftwm:
+      return "Driftwm";
     case CompositorKind::Unknown:
       return "Unknown";
     }

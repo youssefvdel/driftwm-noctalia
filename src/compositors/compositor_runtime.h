@@ -4,6 +4,10 @@
 
 namespace compositors {
 
+  namespace driftwm {
+    class DriftwmRuntime;
+  } // namespace driftwm
+
   namespace hyprland {
     class HyprlandRuntime;
   } // namespace hyprland
@@ -48,6 +52,8 @@ namespace compositors {
     [[nodiscard]] const triad::TriadRuntime& triad() const noexcept;
     [[nodiscard]] umbriel::UmbrielRuntime& umbriel() noexcept;
     [[nodiscard]] const umbriel::UmbrielRuntime& umbriel() const noexcept;
+    [[nodiscard]] driftwm::DriftwmRuntime& driftwm() noexcept;
+    [[nodiscard]] const driftwm::DriftwmRuntime& driftwm() const noexcept;
 
   private:
     std::unique_ptr<hyprland::HyprlandRuntime> m_hyprland;
@@ -56,6 +62,7 @@ namespace compositors {
     std::unique_ptr<sway::SwayRuntime> m_sway;
     std::unique_ptr<triad::TriadRuntime> m_triad;
     std::unique_ptr<umbriel::UmbrielRuntime> m_umbriel;
+    std::unique_ptr<driftwm::DriftwmRuntime> m_driftwm;
   };
 
 } // namespace compositors

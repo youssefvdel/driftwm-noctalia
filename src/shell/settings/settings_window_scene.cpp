@@ -22,6 +22,7 @@
 #include "shell/settings/settings_content.h"
 #include "shell/settings/settings_content_common.h"
 #include "shell/settings/settings_content_plugins.h"
+#include "shell/settings/settings_content_driftwm.h"
 #include "shell/settings/settings_sidebar.h"
 #include "shell/settings/settings_window.h"
 #include "shell/tooltip/tooltip_manager.h"
@@ -121,6 +122,12 @@ namespace {
     std::vector<settings::SettingsSection> sections;
     for (const auto& descriptor : settings::settingsSectionDescriptors()) {
       if (!descriptor.sidebar) {
+        continue;
+      }
+      // A section scoped to one compositor is only listed in that compositor's
+      // session; the content dispatcher is gated the same way.
+      if (descriptor.compositor != compositors::CompositorKind::Unknown
+          && compositors::detect() != descriptor.compositor) {
         continue;
       }
       const bool present = descriptor.alwaysShow
@@ -973,6 +980,68 @@ settings::SettingsContentContext SettingsWindow::makeContentContext(
   };
 }
 
+void SettingsWindow::addDriftwmContent(Flex& target, float scale) {
+  auto* config = m_platform != nullptr ? m_platform->driftwmConfigService() : nullptr;
+  if (config == nullptr) {
+    return;
+  }
+
+  m_driftwmDocument.reset();
+  m_driftwmStatusMessage.clear();
+  m_driftwmStatusIsError = false;
+
+  if (!config->available()) {
+    m_driftwmStatusMessage = i18n::tr("settings.driftwm.missing-config", "path", config->configPath().string());
+    m_driftwmStatusIsError = true;
+  } else {
+    std::string error;
+    if (auto document = config->loadDocument(&error); document.has_value()) {
+      m_driftwmDocument = std::move(document);
+    } else {
+      // Hand-edited into an invalid state: report it and offer no rows rather than
+      // writing anything on top of a file noctalia cannot read.
+      m_driftwmStatusMessage = i18n::tr("settings.driftwm.unreadable-config", "path", config->configPath().string());
+      m_driftwmStatusIsError = true;
+    }
+  }
+
+  // Reported from the row that could not be committed, so a rejected candidate is
+  // explained instead of silently reverting.
+  if (!m_driftwmConfigError.empty()) {
+    m_driftwmStatusMessage = std::move(m_driftwmConfigError);
+    m_driftwmConfigError.clear();
+    m_driftwmStatusIsError = true;
+  }
+
+  settings::addSettingsDriftwm(
+      target,
+      settings::SettingsDriftwmContext{
+          .scale = scale,
+          .selectedSection = m_selectedSection,
+          .config = config,
+          .document = m_driftwmDocument.has_value() ? &*m_driftwmDocument : nullptr,
+          .statusMessage = m_driftwmStatusMessage,
+          .statusIsError = m_driftwmStatusIsError,
+          .pageTitleRow = m_pageTitleRow,
+          .groupJumpRow = m_groupJumpRow,
+          .scrollContentToTop =
+              [this](const Node& node) {
+                if (m_contentScrollView != nullptr) {
+                  scrollNodeToScrollViewTop(*m_contentScrollView, node, Style::spaceMd * uiScale());
+                }
+              },
+          .expandedGroupsByPage = m_expandedSettingGroups,
+          .requestContentRebuild = [this]() { requestContentRebuild(); },
+          .clearStatus = [this]() {
+            m_driftwmStatusMessage.clear();
+            m_driftwmStatusIsError = false;
+            requestContentRebuild();
+          },
+          .onApplyFailed = [this](std::string message) { m_driftwmConfigError = std::move(message); },
+      }
+  );
+}
+
 void SettingsWindow::syncSessionActionInlineSummary(std::size_t index, const SessionPanelActionConfig& row) {
   if (index >= m_sessionActionSummaryLabels.size()) {
     return;
@@ -1066,6 +1135,12 @@ void SettingsWindow::rebuildSettingsContent() {
 
   logSettingsProfile("rebuildContent sections", phaseProfileWatch);
   phaseProfileWatch.reset();
+
+  // After the registry pass: the DriftWM section is fully custom content, so it has
+  // no registry entries to fold into the shared render.
+  if (m_selectedSection == "driftwm") {
+    addDriftwmContent(*m_contentContainer, scale);
+  }
 
   if (m_selectedSection == "plugins" && m_pluginManager != nullptr) {
     refreshPluginListIfNeeded();

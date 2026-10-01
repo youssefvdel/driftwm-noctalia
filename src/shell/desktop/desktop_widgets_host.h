@@ -17,6 +17,7 @@
 class ConfigService;
 class RenderContext;
 class WaylandConnection;
+struct KeyboardEvent;
 struct PointerEvent;
 struct WaylandOutput;
 struct wl_output;
@@ -42,6 +43,7 @@ public:
   void requestRedraw();
   void setWallpaperMasks(const OutputWallpaperMaskMap& masks);
   bool onPointerEvent(const PointerEvent& event);
+  void onKeyboardEvent(const KeyboardEvent& event);
 
 private:
   struct DesktopWidgetInstance {

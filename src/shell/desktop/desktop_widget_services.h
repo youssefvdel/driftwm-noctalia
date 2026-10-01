@@ -14,6 +14,10 @@ class SystemMonitorService;
 class WaylandConnection;
 class WeatherService;
 
+namespace compositors::driftwm {
+  class DriftwmStateSource;
+}
+
 namespace scripting {
   class ScriptApiContext;
 }
@@ -35,6 +39,9 @@ struct DesktopWidgetRuntimeServices {
   MprisService* mpris = nullptr;
   HttpClient* httpClient = nullptr;
   SystemMonitorService* sysmon = nullptr;
+  // Null on every compositor but DriftWM. The minimap has no geometry fallback,
+  // so the factory builds nothing without it.
+  compositors::driftwm::DriftwmStateSource* driftwmStateSource = nullptr;
   DesktopWidgetScriptDeps scriptDeps;
 };
 

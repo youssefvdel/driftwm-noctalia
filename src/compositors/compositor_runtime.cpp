@@ -1,5 +1,6 @@
 #include "compositors/compositor_runtime.h"
 
+#include "compositors/driftwm/driftwm_runtime.h"
 #include "compositors/hyprland/hyprland_runtime.h"
 #include "compositors/mango/mango_runtime.h"
 #include "compositors/niri/niri_runtime.h"
@@ -12,7 +13,8 @@ namespace compositors {
   CompositorRuntimeRegistry::CompositorRuntimeRegistry()
       : m_hyprland(std::make_unique<hyprland::HyprlandRuntime>()), m_mango(std::make_unique<mango::MangoRuntime>()),
         m_niri(std::make_unique<niri::NiriRuntime>()), m_sway(std::make_unique<sway::SwayRuntime>()),
-        m_triad(std::make_unique<triad::TriadRuntime>()), m_umbriel(std::make_unique<umbriel::UmbrielRuntime>()) {}
+        m_triad(std::make_unique<triad::TriadRuntime>()), m_umbriel(std::make_unique<umbriel::UmbrielRuntime>()),
+        m_driftwm(std::make_unique<driftwm::DriftwmRuntime>()) {}
 
   CompositorRuntimeRegistry::~CompositorRuntimeRegistry() = default;
 
@@ -39,5 +41,9 @@ namespace compositors {
   umbriel::UmbrielRuntime& CompositorRuntimeRegistry::umbriel() noexcept { return *m_umbriel; }
 
   const umbriel::UmbrielRuntime& CompositorRuntimeRegistry::umbriel() const noexcept { return *m_umbriel; }
+
+  driftwm::DriftwmRuntime& CompositorRuntimeRegistry::driftwm() noexcept { return *m_driftwm; }
+
+  const driftwm::DriftwmRuntime& CompositorRuntimeRegistry::driftwm() const noexcept { return *m_driftwm; }
 
 } // namespace compositors
