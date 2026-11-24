@@ -27,6 +27,7 @@ class OutputProbe;
 class SessionBus;
 class WaylandWorkspaces;
 class FileWatcher;
+class DriftwmWorkspaceBackend;
 
 namespace compositors::kde {
   class KwinActiveWindow;
@@ -204,6 +205,10 @@ public:
   [[nodiscard]] compositors::driftwm::DriftwmConfigService* driftwmConfigService() noexcept;
 
 private:
+  // DriftWM's window inventory once its first snapshot has arrived, or null on
+  // every other compositor and until then.
+  [[nodiscard]] const DriftwmWorkspaceBackend* driftwmInventory() const noexcept;
+
   struct WorkspaceModelSnapshot {
     std::uint32_t outputName = 0;
     std::vector<Workspace> workspaces;
@@ -228,6 +233,9 @@ private:
   std::unique_ptr<compositors::CompositorRuntimeRegistry> m_runtimeRegistry;
   std::unique_ptr<WaylandWorkspaces> m_workspaces;
   std::unique_ptr<compositors::WorkspaceMetadataBackend> m_workspaceMetadataBackend;
+  // The DriftWM member of the metadata backend above, or null; the toplevel
+  // queries read the window inventory through it.
+  DriftwmWorkspaceBackend* m_driftwmWorkspaceBackend = nullptr;
   std::vector<std::unique_ptr<compositors::FocusedOutputBackend>> m_focusedOutputBackends;
   std::unique_ptr<compositors::OutputPowerBackend> m_outputPowerBackend;
   mutable std::optional<bool> m_lastRequestedOutputPowerState;
