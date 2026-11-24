@@ -7,6 +7,7 @@
 #include "compositors/driftwm/driftwm_output_backend.h"
 #include "compositors/driftwm/driftwm_runtime.h"
 #include "compositors/driftwm/driftwm_state_source.h"
+#include "compositors/driftwm/driftwm_workspace_backend.h"
 #include "compositors/ext_workspace/ext_workspace_output_backend.h"
 #include "compositors/hyprland/hyprland_keyboard_backend.h"
 #include "compositors/hyprland/hyprland_output_backend.h"
@@ -34,6 +35,8 @@
 #include "compositors/workspace_alert_service.h"
 #include "core/log.h"
 #include "core/process/process.h"
+#include "system/app_identity.h"
+#include "util/string_utils.h"
 #include "wayland/output_probe.h"
 #include "wayland/wayland_connection.h"
 #include "wayland/wayland_workspaces.h"
@@ -43,6 +46,7 @@
 #include <csignal>
 #include <cstdlib>
 #include <functional>
+#include <iterator>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
@@ -247,6 +251,92 @@ namespace {
     }
   }
 
+  // DriftWM's window inventory as toplevels: one per window of the app, on the
+  // outputs the window belongs to. Each carries its inventory id as an exact
+  // identity and no handle, so every action on it goes back through the IPC.
+  [[nodiscard]] std::vector<ToplevelInfo> driftwmInventoryWindowsForApp(
+      const DriftwmWorkspaceBackend& inventory, const std::string& idLower, const std::string& wmClassLower,
+      const std::string& outputName
+  ) {
+    std::vector<ToplevelInfo> windows;
+    std::uint64_t order = 0;
+    for (const auto& window : inventory.windows()) {
+      ++order;
+      if (window.appId.empty() || !DriftwmWorkspaceBackend::onOutput(window, outputName)) {
+        continue;
+      }
+      const auto appLower = StringUtils::toLower(window.appId);
+      if (!app_identity::matchesLower(appLower, idLower, wmClassLower, {})) {
+        continue;
+      }
+      windows.push_back(
+          ToplevelInfo{
+              .title = StringUtils::windowTitleSingleLine(window.title),
+              .appId = window.appId,
+              .identifier = std::to_string(window.id),
+              .order = order,
+              .handle = nullptr,
+              .extHandle = nullptr,
+              .outputAnnounced = true,
+              .exactIdentity = true,
+          }
+      );
+    }
+    return windows;
+  }
+
+  // DriftWM's inventory lists the xdg toplevels that carry an app id. XWayland
+  // and app-id-less windows exist only as wlr toplevels, so a toplevel query is
+  // the inventory plus the wlr toplevels that stand for no inventory window.
+  //
+  // A wlr toplevel stands for an inventory window when both share an app id and
+  // a title. What is left over is paired per app id by count, so a title that
+  // changed on one side first does not surface a duplicate window: the window
+  // is still accounted for, only under its old title.
+  void appendUnlistedWlrWindows(std::vector<ToplevelInfo>& windows, std::vector<ToplevelInfo> wlrWindows) {
+    // An app id never contains a newline, so the first one splits the key.
+    const auto titleKey = [](const ToplevelInfo& window) { return window.appId + '\n' + window.title; };
+    std::unordered_map<std::string, std::size_t> unpaired;
+    for (const auto& window : windows) {
+      ++unpaired[titleKey(window)];
+    }
+    std::erase_if(wlrWindows, [&](const ToplevelInfo& window) {
+      const auto it = unpaired.find(titleKey(window));
+      if (it == unpaired.end() || it->second == 0) {
+        return false;
+      }
+      --it->second;
+      return true;
+    });
+    if (wlrWindows.empty()) {
+      return;
+    }
+
+    // The titles the two sides disagree on are settled per app id: as long as
+    // the inventory has as many windows of the app left to pair, the wlr
+    // toplevel is one of them.
+    std::unordered_map<std::string_view, std::size_t> spare;
+    for (const auto& window : windows) {
+      const auto it = unpaired.find(titleKey(window));
+      if (it != unpaired.end() && it->second > 0) {
+        spare[window.appId] += it->second;
+        it->second = 0;
+      }
+    }
+    std::erase_if(wlrWindows, [&](const ToplevelInfo& window) {
+      const auto it = spare.find(window.appId);
+      if (it == spare.end() || it->second == 0) {
+        return false;
+      }
+      --it->second;
+      return true;
+    });
+
+    windows.insert(
+        windows.end(), std::make_move_iterator(wlrWindows.begin()), std::make_move_iterator(wlrWindows.end())
+    );
+  }
+
   template <typename BackendT> class FocusedOutputAdapter final : public compositors::FocusedOutputBackend {
   public:
     FocusedOutputAdapter() = default;
@@ -427,9 +517,11 @@ namespace {
     case compositors::CompositorKind::Dwl:
     case compositors::CompositorKind::Kde:
     case compositors::CompositorKind::Labwc:
-    // DriftWM exports its bookmarks over ext-workspace-v1, so the generic
-    // ext-workspace backend already covers it.
+      break;
+    // DriftWM exports its bookmarks over ext-workspace-v1, which the generic
+    // ext-workspace backend already covers; its windows only exist on the IPC.
     case compositors::CompositorKind::Driftwm:
+      return std::make_unique<DriftwmWorkspaceBackend>(runtimeRegistry.driftwm());
     case compositors::CompositorKind::Unknown:
       break;
     }
@@ -615,6 +707,12 @@ CompositorPlatform::CompositorPlatform(WaylandConnection& wayland)
     : m_wayland(wayland), m_runtimeRegistry(std::make_unique<compositors::CompositorRuntimeRegistry>()),
       m_workspaces(std::make_unique<WaylandWorkspaces>(*m_runtimeRegistry)) {
   m_workspaceMetadataBackend = createWorkspaceMetadataBackend(*m_runtimeRegistry);
+  // The metadata backend is DriftWM's only on DriftWM; the typed pointer feeds
+  // the toplevel queries, and its window list drives their change signal.
+  m_driftwmWorkspaceBackend = dynamic_cast<DriftwmWorkspaceBackend*>(m_workspaceMetadataBackend.get());
+  if (m_driftwmWorkspaceBackend != nullptr) {
+    m_driftwmWorkspaceBackend->setWindowChangeCallback([this]() { notifyToplevelsChanged(); });
+  }
   if (auto focusedOutputBackend = createFocusedOutputBackend(*m_runtimeRegistry); focusedOutputBackend != nullptr) {
     m_focusedOutputBackends.push_back(std::move(focusedOutputBackend));
   }
@@ -716,6 +814,11 @@ compositors::driftwm::DriftwmStateSource* CompositorPlatform::driftwmStateSource
 
 compositors::driftwm::DriftwmConfigService* CompositorPlatform::driftwmConfigService() noexcept {
   return m_driftwmConfigService.get();
+}
+
+const DriftwmWorkspaceBackend* CompositorPlatform::driftwmInventory() const noexcept {
+  return m_driftwmWorkspaceBackend != nullptr && m_driftwmWorkspaceBackend->available() ? m_driftwmWorkspaceBackend
+                                                                                        : nullptr;
 }
 
 bool CompositorPlatform::hasXdgShell() const noexcept { return m_wayland.hasXdgShell(); }
@@ -896,6 +999,20 @@ std::optional<ActiveToplevel> CompositorPlatform::activeToplevel() const {
       }
     }
   }
+  if (const auto* inventory = driftwmInventory(); inventory != nullptr) {
+    // The inventory is authoritative for focus: it also reaches the suspended
+    // stand-ins the wlr manager has no toplevel for. Without a focused entry the
+    // focus may sit on a window the inventory omits, such as an XWayland one, so
+    // the wlr manager still answers.
+    if (const auto* focused = inventory->focusedWindow(); focused != nullptr) {
+      return ActiveToplevel{
+          .title = StringUtils::windowTitleSingleLine(focused->title),
+          .appId = focused->appId,
+          .identifier = std::to_string(focused->id),
+          .handle = nullptr,
+      };
+    }
+  }
   return m_wayland.activeToplevel();
 }
 
@@ -909,6 +1026,27 @@ std::vector<std::string> CompositorPlatform::runningAppIds(wl_output* outputFilt
       return ids;
     }
   }
+  if (const auto* inventory = driftwmInventory(); inventory != nullptr) {
+    // Canvas windows appear on every output, so the wlr toplevels add their app
+    // ids unfiltered. Only app ids the inventory does not carry are added: it
+    // already stands for every window of the others.
+    std::vector<std::string> ids;
+    std::unordered_set<std::string> known;
+    const std::string outputName = connectorNameForOutput(outputFilter);
+    for (const auto& window : inventory->windows()) {
+      if (window.appId.empty() || !DriftwmWorkspaceBackend::onOutput(window, outputName)) {
+        continue;
+      }
+      ids.push_back(window.appId);
+      known.insert(window.appId);
+    }
+    for (auto& appId : m_wayland.runningAppIds(nullptr)) {
+      if (known.insert(appId).second) {
+        ids.push_back(appId);
+      }
+    }
+    return ids;
+  }
   return m_wayland.runningAppIds(outputFilter);
 }
 
@@ -921,6 +1059,15 @@ std::vector<ToplevelInfo> CompositorPlatform::windowsForApp(
       (void)outputFilter;
       return kdeWindows;
     }
+  }
+
+  if (const auto* inventory = driftwmInventory(); inventory != nullptr) {
+    auto windows =
+        driftwmInventoryWindowsForApp(*inventory, idLower, wmClassLower, connectorNameForOutput(outputFilter));
+    // Canvas windows appear on every output, so the wlr toplevels are not
+    // filtered by output.
+    appendUnlistedWlrWindows(windows, m_wayland.windowsForApp(idLower, wmClassLower, nullptr));
+    return windows;
   }
 
   auto windows = m_wayland.windowsForApp(idLower, wmClassLower, outputFilter);
@@ -942,6 +1089,11 @@ std::vector<ToplevelInfo> CompositorPlatform::windowsForApp(
 }
 
 std::vector<ToplevelInfo> CompositorPlatform::windowsWithoutAppId(wl_output* outputFilter) const {
+  // The inventory lists only windows that carry an app id, so these are wlr
+  // toplevels. Canvas windows appear on every output, so no output filter applies.
+  if (driftwmInventory() != nullptr) {
+    outputFilter = nullptr;
+  }
   auto windows = m_wayland.windowsWithoutAppId(outputFilter);
   if (!compositors::isHyprland() || m_hyprlandToplevelMapping == nullptr || !m_hyprlandToplevelMapping->available()) {
     return windows;
@@ -1174,6 +1326,12 @@ void CompositorPlatform::setWorkspaceChangeCallback(ChangeCallback callback) {
   m_lastWorkspaceModelSnapshot = workspaceModelSnapshot();
   m_lastFocusedCompositorWindowId = focusedCompositorWindowId();
   auto wrapper = [this]() {
+    // A bookmark that appeared or vanished changes no state snapshot, so the
+    // window list is re-derived against a fresh bookmark list before the model
+    // below is compared.
+    if (m_driftwmWorkspaceBackend != nullptr && m_driftwmWorkspaceBackend->refreshBookmarks()) {
+      notifyToplevelsChanged();
+    }
     auto nextSnapshot = workspaceModelSnapshot();
     auto nextFocused = focusedCompositorWindowId();
     if (sameWorkspaceModelSnapshot(nextSnapshot, m_lastWorkspaceModelSnapshot)
@@ -1230,8 +1388,8 @@ std::size_t CompositorPlatform::addWorkspacePollFds(std::vector<pollfd>& fds) co
         {.fd = m_workspaceMetadataBackend->pollFd(), .events = m_workspaceMetadataBackend->pollEvents(), .revents = 0}
     );
   }
-  if (auto* stateStream = driftwmStateStream(m_runtimeRegistry.get()); stateStream != nullptr
-      && stateStream->pollFd() >= 0) {
+  if (auto* stateStream = driftwmStateStream(m_runtimeRegistry.get());
+      stateStream != nullptr && stateStream->pollFd() >= 0) {
     fds.push_back({.fd = stateStream->pollFd(), .events = stateStream->pollEvents(), .revents = 0});
   }
   return start;

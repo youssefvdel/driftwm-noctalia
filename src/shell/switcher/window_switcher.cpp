@@ -824,6 +824,14 @@ void WindowSwitcher::closeWindowAt(std::size_t index) {
   }
   if (handle != nullptr) {
     m_platform->closeToplevel(handle);
+  } else if (!entry.windowId.empty()) {
+    // No wlr handle backs this window, so it can only be one the compositor
+    // backend identified by id, such as a DriftWM inventory entry. Hand the id
+    // back and let the backend close it; without one this closes nothing, as
+    // before.
+    m_platform->closeToplevelInfo(
+        ToplevelInfo{.identifier = entry.windowId, .extHandle = nullptr, .exactIdentity = true}
+    );
   }
 
   refreshWindows();
